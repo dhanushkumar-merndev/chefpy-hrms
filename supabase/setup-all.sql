@@ -31,6 +31,7 @@ create table if not exists public.hrms_employees (
   created_at timestamptz not null default now()
 );
 alter table public.hrms_employees add column if not exists role_label text not null default '';
+alter table public.hrms_employees add column if not exists weekly_off smallint[] not null default '{0}';
 
 create table if not exists public.hrms_sessions (
   token uuid primary key default gen_random_uuid(),
@@ -246,7 +247,7 @@ begin
     'now', now(),
     'settings', (select json_build_object('inc', inc, 'balance', rzp_balance, 'acct', rzp_acct, 'golive', golive, 'late', late_after) from hrms_settings where id = 1),
     'employees', (select coalesce(json_agg(json_build_object(
-        'id', x.id, 'name', x.name, 'role', x.role, 'label', x.role_label, 'dept', x.dept, 'title', x.title, 'mgr', x.mgr, 'phone', x.phone, 'joined', x.joined,
+        'id', x.id, 'name', x.name, 'role', x.role, 'label', x.role_label, 'off', x.weekly_off, 'dept', x.dept, 'title', x.title, 'mgr', x.mgr, 'phone', x.phone, 'joined', x.joined,
         'salary', case when boss or x.id = e.id then x.salary end,
         'bank', case when boss or x.id = e.id then x.bank end) order by x.id), '[]') from hrms_employees x where x.active),
     'today_days', (select coalesce(json_agg(json_build_object('emp', d.emp, 'in', d.in_at, 'out', d.out_at, 'seen', d.last_seen,
@@ -362,16 +363,22 @@ end $$;
 create or replace function public.hrms_workdays(a date, b date) returns int language sql immutable set search_path = public as $$
   select count(*)::int from generate_series(a, b, interval '1 day') g where extract(dow from g) <> 0 $$;
 
+create or replace function public.hrms_emp_workdays(p_emp text, a date, b date) returns int
+language sql stable security definer set search_path = public as $$
+  select count(*)::int from generate_series(a, b, interval '1 day') g
+   where not (extract(dow from g)::smallint = any (coalesce((select weekly_off from hrms_employees where id = p_emp), '{0}'))) $$;
+
 create or replace function public.hrms_apply_leave(p_token uuid, p_type text, p_from date, p_to date, p_reason text) returns void
 language plpgsql security definer set search_path = public as $$
 declare e public.hrms_employees := hrms_me(p_token); n int; quota int; used int;
 begin
   if p_to < p_from then raise exception 'End date is before start date'; end if;
   if p_from < hrms_today() then raise exception 'Leave cannot start in the past'; end if;
-  n := hrms_workdays(p_from, p_to);
+  n := hrms_emp_workdays(e.id, p_from, p_to);
+  if n = 0 then raise exception 'Those dates are all your weekly off'; end if;
   quota := case p_type when 'Casual' then 8 when 'Sick' then 6 when 'Earned' then 12 end;
   if quota is null then raise exception 'Unknown leave type'; end if;
-  select coalesce(sum(hrms_workdays(from_d, to_d)), 0) into used from hrms_leaves
+  select coalesce(sum(hrms_emp_workdays(e.id, from_d, to_d)), 0) into used from hrms_leaves
    where emp = e.id and type = p_type and st in ('approved','pending') and extract(year from from_d) = extract(year from p_from);
   if used + n > quota then raise exception 'Not enough % leave left', lower(p_type); end if;
   insert into hrms_leaves(emp, type, from_d, to_d, reason, st, by_emp)
@@ -679,11 +686,28 @@ begin
   if p.emp <> e.id then perform hrms_note(p.emp, e.name || ' cancelled the ' || p.label || ' salary payout record of ' || hrms_fmt_inr(p.amt) || '.', 'payslip'); end if;
 end $$;
 
+
+create or replace function public.hrms_set_weekly_off(p_token uuid, p_emp text, p_days int[]) returns void
+language plpgsql security definer set search_path = public as $$
+declare e public.hrms_employees := hrms_me(p_token); d smallint[]; old smallint[]; txt text;
+begin
+  if e.role not in ('admin','hr') then raise exception 'Only HR or Admin can set weekly off'; end if;
+  if exists (select 1 from unnest(coalesce(p_days, '{}')) x where x < 0 or x > 6) then raise exception 'Unknown day'; end if;
+  select coalesce(array_agg(distinct x::smallint order by x::smallint), '{}') into d from unnest(coalesce(p_days, '{}')) x;
+  if cardinality(d) > 6 then raise exception 'Leave at least one working day'; end if;
+  select weekly_off into old from hrms_employees where id = p_emp and active;
+  if not found then raise exception 'Employee not found'; end if;
+  if old is not distinct from d then return; end if;
+  update hrms_employees set weekly_off = d where id = p_emp;
+  select coalesce(string_agg((array['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'])[x + 1], ', ' order by (x + 6) % 7), 'none') into txt from unnest(d) x;
+  if p_emp <> e.id then perform hrms_note(p_emp, e.name || ' set your weekly off: ' || txt || '.', 'attendance'); end if;
+end $$;
+
 -- ---------- permissions: only the public API functions are callable ----------
 do $$ declare f text; begin
   foreach f in array array[
     'hrms_today()','hrms_me(uuid)','hrms_note(text,text,text)','hrms_scope(public.hrms_employees)','hrms_fmt_inr(numeric)',
-    'hrms_close_open(text,timestamptz)','hrms_workdays(date,date)','hrms_admin(uuid)'] loop
+    'hrms_close_open(text,timestamptz)','hrms_workdays(date,date)','hrms_admin(uuid)','hrms_emp_workdays(text,date,date)'] loop
     execute format('revoke all on function public.%s from public, anon, authenticated', f);
   end loop;
   foreach f in array array[
@@ -696,7 +720,7 @@ do $$ declare f text; begin
     'hrms_add_employee(uuid,text,text,text,text,numeric,text,text,text,text,text)','hrms_remove_employee(uuid,text)',
     'hrms_update_employee(uuid,text,text,text,text,text,numeric,text,text,text,text,text)','hrms_update_leave(uuid,bigint,text,date,date,text,text)',
     'hrms_delete_leave(uuid,bigint)','hrms_calls_on(uuid,date)','hrms_update_call(uuid,bigint,text,text,text,int,numeric,text)','hrms_delete_call(uuid,bigint)',
-    'hrms_set_day(uuid,text,date,text,text,int,int)','hrms_delete_day(uuid,text,date)','hrms_delete_adj(uuid,bigint)','hrms_delete_payout(uuid,text)'] loop
+    'hrms_set_day(uuid,text,date,text,text,int,int)','hrms_set_weekly_off(uuid,text,int[])','hrms_delete_day(uuid,text,date)','hrms_delete_adj(uuid,bigint)','hrms_delete_payout(uuid,text)'] loop
     execute format('revoke all on function public.%s from public', f);
     execute format('grant execute on function public.%s to anon, authenticated', f);
   end loop;

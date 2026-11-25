@@ -135,8 +135,9 @@ td .acts{flex-wrap:nowrap}
 .slip td:last-child{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .slip th{text-align:left;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--mute);padding:6px 0;border-bottom:1px solid var(--line)}.slip th:last-child{text-align:right}
 .slip tr.sub td{font-weight:600;border-top:1px solid var(--line)}.slip tr.sec td{padding-top:12px;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--mute)}
-.ps-head{display:flex;align-items:center;gap:12px;padding-bottom:12px;margin-bottom:12px;border-bottom:2px solid var(--brand)}.ps-head img{border-radius:10px;background:#fff}.ps-head small,.ps-tag small{display:block;color:var(--mute);font-size:12px}.ps-head b{font-family:Fredoka,Inter,sans-serif;font-size:20px}.ps-tag{margin-left:auto;text-align:right}.ps-tag b{font-size:16px}
+.ps-head{display:flex;align-items:center;gap:12px;padding-bottom:12px;margin-bottom:12px;border-bottom:2px solid var(--chili)}.ps-head img{border-radius:10px;background:#fff}.ps-head small,.ps-tag small{display:block;color:var(--mute);font-size:12px}.ps-head b{font-family:Fredoka,Inter,sans-serif;font-size:20px}.ps-tag{margin-left:auto;text-align:right}.ps-tag b{font-size:16px}
 .ps-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px 16px;margin-bottom:14px}.ps-grid small{display:block;color:var(--mute);font-size:12px}.ps-grid b{font-weight:600;font-size:14px;word-break:break-word}
+.offpick{border:0;padding:0;margin:0;display:flex;flex-wrap:wrap;gap:6px}.offpick legend{font-size:13px;font-weight:600;margin-bottom:6px;padding:0}.offpick label{display:inline-flex}.offpick input{position:absolute;opacity:0;pointer-events:none}.offpick span{display:inline-block;min-width:46px;text-align:center;padding:8px 10px;border-radius:999px;border:1px solid var(--line);font-size:14px;cursor:pointer;user-select:none}.offpick input:checked+span{background:var(--chili);border-color:var(--chili);color:#fff;font-weight:600}.offpick input:focus-visible+span{outline:2px solid var(--chili);outline-offset:2px}.offpick small{flex-basis:100%;color:var(--mute);font-size:12px;margin-top:2px}
 .ps-foot{font-size:11px;color:var(--mute);margin:12px 0 0}
 @media print{body *{visibility:hidden!important}.slipdoc,.slipdoc *{visibility:visible!important}.slipdoc{position:absolute;inset:0 auto auto 0;width:100%;padding:24px;color:#000;background:#fff}.noprint{display:none!important}.mask{background:none!important}}
 .slip tr.t td{font-weight:700;border-top:2px solid var(--ink)}
@@ -225,6 +226,12 @@ const WD=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const fdate=k=>{const [y,m,d]=k.split('-').map(Number);const dt=new Date(y,m-1,d);return WD[dt.getDay()]+' '+d+' '+MON[m-1]};
 const addDays=(k,n)=>{const [y,m,d]=k.split('-').map(Number);return dkey(new Date(y,m-1,d+n))};
 const isSun=k=>{const [y,m,d]=k.split('-').map(Number);return new Date(y,m-1,d).getDay()===0};
+const DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const dowOf=k=>{const [y,m,d]=k.split('-').map(Number);return new Date(y,m-1,d).getDay()};
+const offOf=id=>{const e=emp(id);return e&&Array.isArray(e.off)?e.off:[0]};
+const isOff=(id,k)=>offOf(id).includes(dowOf(k));
+const offText=id=>{const o=offOf(id);return o.length?[...o].sort((a,b)=>((a+6)%7)-((b+6)%7)).map(d=>DOW[d]).join(', '):'None'};
+const offPicker=cur=>`<fieldset class="w offpick"><legend>Weekly off</legend>${[1,2,3,4,5,6,0].map(d=>`<label><input type="checkbox" name="off" value="${d}"${cur.includes(d)?' checked':''}><span>${DOW[d]}</span></label>`).join('')}<small>Tick their day(s) off. These days are not counted as absent or as leave.</small></fieldset>`;
 const workDaysBetween=(a,b)=>{let n=0;for(let k=a;k<=b;k=addDays(k,1))if(!isSun(k))n++;return n};
 let LATE=585;const SHIFT=480,IDLE_MS=5*60*1000;
 const store={get(k){try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
@@ -288,6 +295,9 @@ async function run(fn,args,ok,after){if(BUSY)return;BUSY=true;document.body.clas
   catch(e){if(TOKEN)toast(e.message)}finally{BUSY=false;document.body.classList.remove('busy')}}
 const sync=(fn,args,ok)=>api(fn,args).then(()=>{if(ok)toast(ok);return load()}).then(()=>{if(ME&&!$('#mask.on'))render()}).catch(e=>{if(TOKEN)toast(e.message)});
 const T=o=>Object.assign({p_token:TOKEN},o);
+async function steps(list,ok){if(BUSY)return;BUSY=true;document.body.classList.add('busy');const res=[];
+  try{for(const st of list){const [fn,args]=typeof st==='function'?st(res[res.length-1]):st;res.push(await api(fn,args))}UI.dayCalls={};close();if(ok)toast(ok(res));try{await load()}catch(e){}if(ME)render()}
+  catch(e){if(TOKEN)toast(e.message);try{await load()}catch(x){}if(ME&&!$('#mask.on'))render()}finally{BUSY=false;document.body.classList.remove('busy')}}
 const findCall=v=>S.gen.calls.find(c=>String(c.id)===v)||Object.values(UI.dayCalls).flat().find(c=>String(c.id)===v);
 
 /* ---------- model ---------- */
@@ -302,6 +312,7 @@ const tsum=rec=>{const o={work:0,break:0,idle:0};if(rec)for(const g of rec.segs)
 function status(id){
   const rec=S.gen.today[id];
   if(onLeave(id,TK)&&!rec)return {k:'leave',l:'On leave'};
+  if(!rec&&isOff(id,TK))return {k:'none',l:'Weekly off'};
   if(!rec)return S.gen.absent.includes(id)?{k:'bad',l:'Absent'}:{k:'none',l:'Not checked in'};
   if(rec.out!=null)return {k:'out',l:'Checked out '+tm(rec.out)};
   const g=rec.segs[rec.segs.length-1];if(!g)return {k:'work',l:'Working'};
@@ -310,9 +321,9 @@ const chip=st=>`<span class="chip c-${st.k}">${esc(st.l)}${st.since!=null?' · s
 function attFor(id,k){
   if((k<S.golive||k<(emp(id).joined||''))&&k!==TK&&!S.gen.att[id+'|'+k])return {st:'pre'};
   const lv=onLeave(id,k);
-  if(k===TK){const r=S.gen.today[id];if(!r)return {st:lv?'leave':S.gen.absent.includes(id)?'absent':'none'};const t=tsum(r);return {st:'present',in:r.in,out:r.out,late:r.in>LATE,act:t.work,brk:t.break,idle:t.idle,half:false}}
-  if(lv)return {st:'leave'};
-  const r=S.gen.att[id+'|'+k];if(!r)return {st:isSun(k)?'off':'none'};
+  if(k===TK){const r=S.gen.today[id];if(!r)return {st:lv&&!isOff(id,k)?'leave':isOff(id,k)?'off':S.gen.absent.includes(id)?'absent':'none'};const t=tsum(r);return {st:'present',in:r.in,out:r.out,late:r.in>LATE,act:t.work,brk:t.break,idle:t.idle,half:false}}
+  if(lv&&!isOff(id,k))return {st:'leave'};
+  const r=S.gen.att[id+'|'+k];if(!r)return {st:isOff(id,k)?'off':'none'};
   if(r.st!=='present')return {st:r.st};
   const w=r.work!=null?r.work+r.idle:r.out-r.in-r.brk;return {st:'present',in:r.in,out:r.out,late:r.in>LATE,act:w-r.idle,brk:r.brk,idle:r.idle,half:w<270}}
 const callsOn=(id,k)=>k===TK?S.gen.calls.filter(c=>c.emp===id).concat(S.calls.filter(c=>c.emp===id&&c.date===TK)):S.calls.filter(c=>c.emp===id&&c.date===k);
@@ -324,7 +335,7 @@ function monthStats(id,off){off=off||0;const o={calls:0,talk:0,conv:0,rev:0};con
 const tgt=id=>S.targets[id]||{calls:900,talk:2400,conv:24,rev:400000};
 const pct=(a,b)=>b?Math.min(100,Math.round(a/b*100)):0;
 const QUOTA={Casual:8,Sick:6,Earned:12};
-const lvDays=l=>workDaysBetween(l.from,l.to);
+const lvDays=l=>{let n=0;for(let k=l.from;k<=l.to;k=addDays(k,1))if(!isOff(l.emp,k))n++;return n};
 const used=(id,type)=>sum(S.leaves.filter(l=>l.emp===id&&l.type===type&&l.st==='approved'&&l.from.slice(0,4)===TK.slice(0,4)),lvDays);
 function breakup(g){g=Math.round(g||0);const basic=Math.round(g*.5),hra=Math.round(basic*.4),conv=Math.min(1600,Math.max(0,g-basic-hra)),med=Math.min(1250,Math.max(0,g-basic-hra-conv));
   return [['Basic salary',basic,'50% of gross'],['House rent allowance (HRA)',hra,'40% of basic'],['Conveyance allowance',conv,''],['Medical allowance',med,''],['Special allowance',g-basic-hra-conv-med,'balance of gross']].filter(x=>x[1]>0)}
@@ -333,7 +344,7 @@ function inWords(n){n=Math.round(n);if(!n)return 'Zero';const a=['','One','Two',
   const parts=[[10000000,'Crore'],[100000,'Lakh'],[1000,'Thousand']];let out=[];for(const [v,w] of parts){if(n>=v){out.push(three(Math.floor(n/v))+' '+w);n%=v}}if(n)out.push(three(n));return out.join(' ')}
 function pay(e,off){
   const b=new Date(TODAY.getFullYear(),TODAY.getMonth()-off,1),y=b.getFullYear(),m=b.getMonth(),ym=y+'-'+pad(m+1);
-  const last=new Date(y,m+1,0).getDate(),days=[];for(let d=1;d<=last;d++){const k=y+'-'+pad(m+1)+'-'+pad(d);if(!isSun(k))days.push(k)}
+  const last=new Date(y,m+1,0).getDate(),days=[];for(let d=1;d<=last;d++){const k=y+'-'+pad(m+1)+'-'+pad(d);if(!isOff(e.id,k))days.push(k)}
   const wd=days.length,el=days.filter(k=>k<TK);let p=0,late=0,half=0,ab=0,lv=0;
   for(const k of el){const r=attFor(e.id,k);if(r.st==='absent'||r.st==='none')ab++;else if(r.st==='leave')lv++;else{p++;if(r.late)late++;if(r.half)half++}}
   const sal=e.salary||0,per=sal/wd,lopDays=ab+half*.5,lateDays=Math.floor(late/3)*.5;
@@ -418,12 +429,12 @@ V.live=()=>{const list=scope(),depts=['All',...new Set(list.map(e=>e.dept))],sh=
 V.attendance=()=>{const r=role(),list=scope(),k=UI.attDate;
   const rows=list.map(e=>{const a=attFor(e.id,k);const l={present:a.late?{k:'break',l:'Late'}:{k:'work',l:'Present'},absent:{k:'bad',l:'Absent'},leave:{k:'leave',l:'On leave'},none:{k:'none',l:k===TK?'Not checked in':'No record'},off:{k:'none',l:'Weekly off'},pre:{k:'none',l:'Before start'}}[a.st];if(a.half)l.l='Half day';
     return `<tr><td>${person(e,e.dept)}</td><td>${chip(l)}</td><td class="n">${tm(a.in)}</td><td class="n">${a.out!=null?tm(a.out):a.in!=null?'working':'–'}</td><td class="n">${a.act!=null?hm(a.act):'–'}</td><td class="n">${a.brk!=null?hm(a.brk):'–'}</td><td class="n">${a.idle!=null?hm(a.idle):'–'}</td>${isAdm()?`<td><div class="acts"><button class="btn s" data-a="dayEdit" data-v="${e.id}">${a.st==='present'?'Edit':'Add'}</button>${a.st==='present'?`<button class="btn s no" data-a="dayDel" data-v="${e.id}">Delete</button>`:''}</div></td>`:''}</tr>`}).join('');
-  const first=TK.slice(0,8)+'01',ds=[];for(let x=first;x<=TK;x=addDays(x,1))if(!isSun(x))ds.push(x);
-  const sumRows=list.map(e=>{let p=0,l=0,a=0,lv=0,act=0,n=0;ds.forEach(x=>{const z=attFor(e.id,x);if(z.st==='present'){p++;if(z.late)l++;if(z.act!=null){act+=z.act;n++}}else if(z.st==='leave')lv++;else if(x<TK&&z.st!=='pre')a++});
+  const first=TK.slice(0,8)+'01',ds=[];for(let x=first;x<=TK;x=addDays(x,1))ds.push(x);
+  const sumRows=list.map(e=>{let p=0,l=0,a=0,lv=0,act=0,n=0;ds.forEach(x=>{const z=attFor(e.id,x);if(z.st==='present'){p++;if(z.late)l++;if(z.act!=null){act+=z.act;n++}}else if(z.st==='leave')lv++;else if(x<TK&&z.st!=='pre'&&z.st!=='off')a++});
     return `<tr><td>${person(e,'')}</td><td class="n">${p}</td><td class="n">${l}</td><td class="n">${lv}</td><td class="n">${a}</td><td class="n">${n?hm(act/n):'–'}</td></tr>`}).join('');
   return `<div class="head"><div><h1>Attendance</h1><p>${list.length>1?'Daily register and this month’s summary':'Your attendance record'}</p></div><div class="filters"><label>Date<input type="date" id="attDate" value="${k}" max="${TK}" min="${minDay()}" data-c="attDate"></label></div></div>
-  <div class="card"><h2>${fdate(k)}</h2><div class="scroll"><table class="stack"><thead><tr><th>Employee</th><th>Status</th><th class="n">In</th><th class="n">Out</th><th class="n">Active</th><th class="n">Break</th><th class="n">Idle</th>${isAdm()?'<th></th>':''}</tr></thead><tbody>${rows}</tbody></table></div><p class="note">Late = check-in after 9:45 am. Half day = less than 4h 30m worked. Shift 9:30 am to 6:30 pm, Monday to Saturday.</p></div>
-  <div class="card" style="margin-top:16px"><h2>${MON[TODAY.getMonth()]} so far (${ds.length} working days)</h2><div class="scroll"><table class="stack"><thead><tr><th>Employee</th><th class="n">Present</th><th class="n">Late</th><th class="n">Leave</th><th class="n">Absent</th><th class="n">Avg active</th></tr></thead><tbody>${sumRows}</tbody></table></div></div>`};
+  <div class="card"><h2>${fdate(k)}</h2><div class="scroll"><table class="stack"><thead><tr><th>Employee</th><th>Status</th><th class="n">In</th><th class="n">Out</th><th class="n">Active</th><th class="n">Break</th><th class="n">Idle</th>${isAdm()?'<th></th>':''}</tr></thead><tbody>${rows}</tbody></table></div><p class="note">Late = check-in after 9:45 am. Half day = less than 4h 30m worked. Shift 9:30 am to 6:30 pm. Each person’s weekly off is set in Team.</p></div>
+  <div class="card" style="margin-top:16px"><h2>${MON[TODAY.getMonth()]} so far</h2><div class="scroll"><table class="stack"><thead><tr><th>Employee</th><th class="n">Present</th><th class="n">Late</th><th class="n">Leave</th><th class="n">Absent</th><th class="n">Avg active</th></tr></thead><tbody>${sumRows}</tbody></table></div></div>`};
 
 function taskCard(t){const late=t.st!=='done'&&t.due<TK,mine=t.to===ME,boss=t.by===ME||['admin','hr'].includes(role()),adm=isAdm();
   const nx={todo:['doing','Start'],doing:['done','Mark done'],done:['doing','Reopen']}[t.st];
@@ -497,7 +508,7 @@ V.notes=()=>{const ns=S.notes.filter(n=>n.to===ME),u=ns.filter(n=>!n.read).lengt
   return `<div class="head"><div><h1>Notifications</h1><p>${u?u+' unread':'All caught up'}</p></div>${u?'<button class="btn" data-a="readAll">Mark all as read</button>':''}</div>
   <div class="card">${ns.length?ns.slice(0,60).map(n=>`<button class="note-row${n.read?'':' unread'}" data-a="openNote" data-v="${esc(n.id)}"><span class="dot"></span><span><span>${esc(n.msg)}</span><small>${ago(n.at)}</small></span></button>`).join(''):'<div class="empty">No notifications yet</div>'}</div>`};
 V.team=()=>`<div class="head"><div><h1>Team</h1><p>${S.emps.length} people · logins and reporting lines</p></div><button class="btn p" data-a="addEmp">Add employee</button></div>
-  <div class="card"><div class="scroll"><table class="stack"><thead><tr><th>Employee</th><th>Login</th><th>Reports to</th><th>Phone</th><th>Salary account</th><th class="n">Salary</th><th>Today</th>${isAdm()?'<th></th>':''}</tr></thead><tbody>${S.emps.map(e=>`<tr><td>${person(e)}</td><td>${esc(e.id)} · ${esc(roleName(e))}<br><small style="color:var(--mute)">${esc(e.dept)}</small></td><td>${e.mgr?esc(emp(e.mgr).name):'–'}</td><td>${esc(e.phone||'')}</td><td>${esc(e.bank||'–')}</td><td class="n">${rup(e.salary)}</td><td>${chip(status(e.id))}</td>${isAdm()?`<td><div class="acts"><button class="btn s" data-a="empEdit" data-v="${e.id}">Edit</button>${e.id!==ME?`<button class="btn s no" data-a="rm" data-v="${e.id}">Delete</button>`:''}</div></td>`:''}</tr>`).join('')}</tbody></table></div><p class="note">Salaries and salary accounts are visible only to HR and Admin. Each person sees their own.</p></div>`;
+  <div class="card"><div class="scroll"><table class="stack"><thead><tr><th>Employee</th><th>Login</th><th>Reports to</th><th>Phone</th><th>Salary account</th><th class="n">Salary</th><th>Today</th>${isAdm()?'<th></th>':''}</tr></thead><tbody>${S.emps.map(e=>`<tr><td>${person(e)}</td><td>${esc(e.id)} · ${esc(roleName(e))}<br><small style="color:var(--mute)">Off: ${offText(e.id)}</small><br><small style="color:var(--mute)">${esc(e.dept)}</small></td><td>${e.mgr?esc(emp(e.mgr).name):'–'}</td><td>${esc(e.phone||'')}</td><td>${esc(e.bank||'–')}</td><td class="n">${rup(e.salary)}</td><td>${chip(status(e.id))}</td>${isAdm()?`<td><div class="acts"><button class="btn s" data-a="empEdit" data-v="${e.id}">Edit</button>${e.id!==ME?`<button class="btn s no" data-a="rm" data-v="${e.id}">Delete</button>`:''}</div></td>`:''}</tr>`).join('')}</tbody></table></div><p class="note">Salaries and salary accounts are visible only to HR and Admin. Each person sees their own.</p></div>`;
 
 /* ---------- nav + shell ---------- */
 const IC={dash:'M3 12l9-8 9 8M5 10v10h14V10',me:'M12 6v6l4 2M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18',live:'M3 12h4l3-7 4 14 3-7h4',attendance:'M4 5h16v15H4zM4 9h16M8 3v4M16 3v4',tasks:'M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2',leaves:'M5 21c6-1 12-6 14-16-9 1-14 7-14 16zM5 21l7-7',sales:'M4 20V10M10 20V4M16 20v-7M22 20H2',payroll:'M3 6h18v12H3zM3 10h18M7 15h4',payslip:'M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6',notes:'M6 9a6 6 0 1 1 12 0c0 6 3 8 3 8H3s3-2 3-8M10 21h4',team:'M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M16 11a3 3 0 1 0 0-6M2 20c0-3 3-5 6-5s6 2 6 5M14 15c3 0 8 1 8 5'};
@@ -599,18 +610,18 @@ const A={
  mlogout:()=>{close();A.logout()},
  readAll:()=>run('hrms_read',T({p_id:null})),
  openNote:v=>{const n=S.notes.find(x=>String(x.id)===v);if(!n)return;if(!n.read){n.read=true;api('hrms_read',T({p_id:Number(v)})).catch(()=>{})}A.go(allowed(n.view)?n.view:'dash')},
- emp:v=>{const e=emp(v),rec=S.gen.today[v],t=tsum(rec);const ds=[];for(let k=addDays(TK,-1);ds.length<6;k=addDays(k,-1))if(!isSun(k))ds.unshift(k);
+ emp:v=>{const e=emp(v),rec=S.gen.today[v],t=tsum(rec);const ds=[];for(let k=addDays(TK,-1);ds.length<6;k=addDays(k,-1))if(!isOff(v,k))ds.unshift(k);
   open(esc(e.name),`<div class="meta" style="justify-content:space-between;margin-bottom:12px">${person(e,e.title+' · '+e.dept)}${chip(status(v))}</div>${tl(rec)}${ticks}<div class="stack3" style="margin:12px 0"><div><span>Active</span><b>${hm(t.work)}</b></div><div><span>Break</span><b>${hm(t.break)}</b></div><div><span>Idle</span><b>${hm(t.idle)}</b></div></div>
   <h3 style="margin:14px 0 6px">Last 6 working days</h3><table><thead><tr><th>Day</th><th class="n">In</th><th class="n">Active</th>${e.role==='sales'?'<th class="n">Calls</th>':''}</tr></thead><tbody>${ds.map(k=>{const a=attFor(v,k);return `<tr><td>${fdate(k)}</td><td class="n">${a.st==='present'?tm(a.in)+(a.late?' · late':''):a.st==='pre'?'–':a.st}</td><td class="n">${a.act!=null?hm(a.act):'–'}</td>${e.role==='sales'?`<td class="n">${dayStats(v,k).calls}</td>`:''}</tr>`}).join('')}</tbody></table>
   <p class="note">Phone: ${esc(e.phone||'')}</p>`)},
- addEmp:()=>open('Add employee',`<form id="fEmp" class="form"><label class="w">Login password<input name="pw" required minlength="6" autocomplete="new-password" placeholder="At least 6 characters"></label><p class="note w" style="margin:0">The employee ID is given automatically. Share the ID and password with the person privately.</p><label class="w">Full name<input name="name" required maxlength="60"></label>${roleSelect('sales','')}<label>Department<input name="dept" required value="Sales" maxlength="40"></label>
+ addEmp:()=>open('Add employee',`<form id="fEmp" class="form"><label class="w">Login password<input name="pw" required minlength="6" autocomplete="new-password" placeholder="At least 6 characters"></label><p class="note w" style="margin:0">The employee ID is given automatically. Share the ID and password with the person privately.</p><label class="w">Full name<input name="name" required maxlength="60"></label>${roleSelect('sales','')}${offPicker([0])}<label>Department<input name="dept" required value="Sales" maxlength="40"></label>
   <label>Job title<input name="title" required maxlength="50" value="Sales Executive"></label><label>Monthly gross (₹)<input type="number" name="salary" min="1000" required value="25000"></label><label>Reports to<select name="mgr">${empOpts(S.emps.filter(e=>['admin','hr','manager'].includes(e.role)),'E03')}</select></label><label>Phone<input name="phone" inputmode="tel" maxlength="15"></label><label class="w">Salary account (bank ••last 4, or UPI ID)<input name="bank" required maxlength="40" placeholder="e.g. SBI ••1234 or UPI name@okaxis"></label><label class="w">Password<input name="pw" required minlength="6" value="emp123"></label><div class="w"><button class="btn p">Add employee</button></div></form>`)
  ,pw:()=>open('Change password',`<form id="fPw" class="form"><label class="w">Current password<input type="password" name="old" required autocomplete="current-password"></label><label class="w">New password<input type="password" name="nw" required minlength="6" autocomplete="new-password"></label><label class="w">Repeat new password<input type="password" name="nw2" required minlength="6" autocomplete="new-password"></label><p class="note w" style="margin:0">You stay signed in here. Other devices are signed out.</p><div class="w"><button class="btn p">Save password</button></div></form>`),
  mpw:()=>{close();A.pw()},
  rpw:v=>open('Reset password · '+esc(emp(v).name),`<form id="fRpw" class="form" data-id="${esc(v)}"><label class="w">New password<input name="nw" required minlength="6" autocomplete="off"></label><p class="note w" style="margin:0">They are signed out everywhere and get a notification. Share the new password with them privately.</p><div class="w"><button class="btn p">Reset password</button></div></form>`),
  empEdit:v=>{const e=emp(v),R={sales:'Sales executive',ops:'Employee (operations)',manager:'Sales manager',hr:'HR',admin:'Admin'};
   open('Edit employee · '+esc(e.id),`<form id="fEditEmp" class="form" data-id="${esc(v)}"><label>Employee ID (login)<input value="${esc(e.id)}" disabled></label><label>New password<input name="pw" type="text" minlength="6" autocomplete="new-password" placeholder="Leave blank to keep the current one"></label>
-  <label class="w">Full name<input name="name" required maxlength="60" value="${esc(e.name)}"></label>${roleSelect(e.role,e.label||'')}<label>Department<input name="dept" maxlength="40" value="${esc(e.dept)}"></label>
+  <label class="w">Full name<input name="name" required maxlength="60" value="${esc(e.name)}"></label>${roleSelect(e.role,e.label||'')}${offPicker(offOf(e.id))}<label>Department<input name="dept" maxlength="40" value="${esc(e.dept)}"></label>
   <label>Job title<input name="title" maxlength="50" value="${esc(e.title)}"></label><label>Monthly gross (₹)<input type="number" name="salary" min="0" required value="${e.salary||0}"></label>
   <label>Reports to<select name="mgr"><option value="">No one</option>${empOpts(S.emps.filter(x=>x.id!==e.id&&['admin','hr','manager'].includes(x.role)),e.mgr)}</select></label><label>Phone<input name="phone" inputmode="tel" maxlength="15" value="${esc(e.phone||'')}"></label>
   <label class="w">Salary account (bank ••last 4, or UPI ID)<input name="bank" maxlength="40" value="${esc(e.bank||'')}"></label>
@@ -654,10 +665,14 @@ const F={
  fInc:d=>run('hrms_set_inc',T({p_inc:Math.max(0,Number(d.get('inc'))||0)}),'Incentive updated',close),
  fTgt:(d,f)=>run('hrms_set_target',T({p_emp:f.dataset.id,p_calls:+d.get('calls'),p_talk:+d.get('talk'),p_conv:+d.get('conv'),p_rev:+d.get('rev')}),'Target saved',close),
  fAdj:(d,f)=>run('hrms_add_adj',T({p_emp:f.dataset.id,p_ym:f.dataset.ym,p_amt:Number(d.get('kind'))*Math.abs(Number(d.get('amt'))),p_reason:String(d.get('reason')).trim()}),'Adjustment added',close),
- fEmp:d=>{const rr=roleFrom(d);if(!rr)return;run('hrms_add_employee',T({p_name:String(d.get('name')).trim(),p_role:rr.role,p_label:rr.label,p_dept:String(d.get('dept')).trim(),p_title:String(d.get('title')).trim(),p_salary:Number(d.get('salary')),p_mgr:d.get('mgr')||'',p_phone:String(d.get('phone')||'').trim(),p_bank:String(d.get('bank')||'').trim(),p_pw:String(d.get('pw'))}),id=>'Added '+id+'. They can sign in with that ID now.',close)},
+ fEmp:d=>{const rr=roleFrom(d);if(!rr)return;const off=d.getAll('off').map(Number);if(off.length>6){toast('Leave at least one working day');return}
+  steps([['hrms_add_employee',T({p_name:String(d.get('name')).trim(),p_role:rr.role,p_label:rr.label,p_dept:String(d.get('dept')).trim(),p_title:String(d.get('title')).trim(),p_salary:Number(d.get('salary')),p_mgr:d.get('mgr')||'',p_phone:String(d.get('phone')||'').trim(),p_bank:String(d.get('bank')||'').trim(),p_pw:String(d.get('pw'))})],
+   id=>['hrms_set_weekly_off',T({p_emp:id,p_days:off})]],r=>'Added '+r[0]+'. They can sign in with that ID now.')},
  fPw:d=>{if(d.get('nw')!==d.get('nw2')){toast('The new passwords do not match');return}run('hrms_change_password',T({p_old:String(d.get('old')),p_new:String(d.get('nw'))}),'Password changed',close)},
  fRpw:(d,f)=>run('hrms_reset_password',T({p_emp:f.dataset.id,p_new:String(d.get('nw'))}),'Password reset for '+emp(f.dataset.id).name,close),
- fEditEmp:(d,f)=>{const rr=roleFrom(d);if(!rr)return;run('hrms_update_employee',T({p_emp:f.dataset.id,p_name:String(d.get('name')).trim(),p_role:rr.role,p_label:rr.label,p_dept:String(d.get('dept')).trim(),p_title:String(d.get('title')).trim(),p_salary:Number(d.get('salary'))||0,p_mgr:d.get('mgr')||'',p_phone:String(d.get('phone')||'').trim(),p_bank:String(d.get('bank')||'').trim(),p_pw:String(d.get('pw')||'')}),d.get('pw')?'Saved, with the new password':'Employee updated',close)},
+ fEditEmp:(d,f)=>{const rr=roleFrom(d);if(!rr)return;const off=d.getAll('off').map(Number);if(off.length>6){toast('Leave at least one working day');return}
+  steps([['hrms_update_employee',T({p_emp:f.dataset.id,p_name:String(d.get('name')).trim(),p_role:rr.role,p_label:rr.label,p_dept:String(d.get('dept')).trim(),p_title:String(d.get('title')).trim(),p_salary:Number(d.get('salary'))||0,p_mgr:d.get('mgr')||'',p_phone:String(d.get('phone')||'').trim(),p_bank:String(d.get('bank')||'').trim(),p_pw:String(d.get('pw')||'')})],
+   ['hrms_set_weekly_off',T({p_emp:f.dataset.id,p_days:off})]],()=>d.get('pw')?'Saved, with the new password':'Employee updated')},
  fLvEdit:(d,f)=>{if(d.get('to')<d.get('from')){toast('End date is before start date');return}run('hrms_update_leave',T({p_id:Number(f.dataset.id),p_type:d.get('type'),p_from:d.get('from'),p_to:d.get('to'),p_reason:String(d.get('reason')).trim(),p_st:d.get('st')}),'Leave updated',close)},
  fCallEdit:(d,f)=>run('hrms_update_call',T({p_id:Number(f.dataset.id),p_lead:String(d.get('lead')).trim(),p_phone:String(d.get('phone')).trim(),p_out:d.get('out'),p_dur:Math.round(Number(d.get('dur'))*60),p_rev:Number(d.get('rev'))||0,p_note:d.get('note')}),'Call updated',close),
  fDay:(d,f)=>run('hrms_set_day',T({p_emp:f.dataset.id,p_day:f.dataset.day,p_in:d.get('in'),p_out:d.get('out')||'',p_brk:Number(d.get('brk'))||0,p_idle:Number(d.get('idle'))||0}),'Attendance saved',close)

@@ -24,6 +24,10 @@ The database is already set up. `supabase/setup-all.sql` recreates it on a new p
 
 Starter accounts come from `supabase/seed.sql`. Sign in as the Admin, change your password (menu → Password), set new passwords for everyone (Team → Edit → New password), add your real staff and delete the sample ones.
 
+## Weekly off
+
+Each employee has their own weekly off day(s), set by HR or Admin in Team (Add employee or Edit). The default is Sunday. Weekly offs are never counted as absent, and leave requests skip them when counting days.
+
 ## Payslips
 
 Payslips show a standard earnings breakup (Basic 50% of gross, HRA 40% of basic, Conveyance up to ₹1,600, Medical up to ₹1,250, Special allowance for the rest) plus sales incentive and any bonus. There are no automatic deductions: net pay = gross + incentive + bonus. Employees can download or print their payslip.
