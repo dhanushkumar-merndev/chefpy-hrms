@@ -29,6 +29,7 @@ create table if not exists public.hrms_employees (
   active boolean not null default true,
   created_at timestamptz not null default now()
 );
+alter table public.hrms_employees add column if not exists role_label text not null default '';
 
 create table if not exists public.hrms_sessions (
   token uuid primary key default gen_random_uuid(),
@@ -244,7 +245,7 @@ begin
     'now', now(),
     'settings', (select json_build_object('inc', inc, 'balance', rzp_balance, 'acct', rzp_acct, 'golive', golive, 'late', late_after) from hrms_settings where id = 1),
     'employees', (select coalesce(json_agg(json_build_object(
-        'id', x.id, 'name', x.name, 'role', x.role, 'dept', x.dept, 'title', x.title, 'mgr', x.mgr, 'phone', x.phone, 'joined', x.joined,
+        'id', x.id, 'name', x.name, 'role', x.role, 'label', x.role_label, 'dept', x.dept, 'title', x.title, 'mgr', x.mgr, 'phone', x.phone, 'joined', x.joined,
         'salary', case when boss or x.id = e.id then x.salary end,
         'bank', case when boss or x.id = e.id then x.bank end) order by x.id), '[]') from hrms_employees x where x.active),
     'today_days', (select coalesce(json_agg(json_build_object('emp', d.emp, 'in', d.in_at, 'out', d.out_at, 'seen', d.last_seen,
@@ -499,8 +500,9 @@ begin
 end $$;
 
 -- ---------- people ----------
+drop function if exists public.hrms_add_employee(uuid,text,text,text,text,numeric,text,text,text,text);
 create or replace function public.hrms_add_employee(p_token uuid, p_name text, p_role text, p_dept text, p_title text, p_salary numeric,
-  p_mgr text, p_phone text, p_bank text, p_pw text) returns text
+  p_mgr text, p_phone text, p_bank text, p_pw text, p_label text) returns text
 language plpgsql security definer set search_path = public, extensions as $$
 declare e public.hrms_employees := hrms_me(p_token); nid text; n int;
 begin
@@ -509,8 +511,9 @@ begin
   if length(coalesce(p_pw, '')) < 6 then raise exception 'Password must be at least 6 characters'; end if;
   select coalesce(max(substr(id, 2)::int), 0) + 1 into n from hrms_employees where id ~ '^E[0-9]+$';
   nid := 'E' || lpad(n::text, 2, '0');
-  insert into hrms_employees(id, name, role, dept, title, salary, mgr, phone, bank, pw_hash)
-  values (nid, trim(p_name), p_role, trim(p_dept), trim(p_title), p_salary, nullif(p_mgr, ''), coalesce(p_phone, ''), coalesce(p_bank, ''),
+  if p_role not in ('admin','hr','manager','sales','ops') then raise exception 'Unknown role'; end if;
+  insert into hrms_employees(id, name, role, role_label, dept, title, salary, mgr, phone, bank, pw_hash)
+  values (nid, trim(p_name), p_role, left(trim(coalesce(p_label, '')), 40), trim(p_dept), trim(p_title), p_salary, nullif(p_mgr, ''), coalesce(p_phone, ''), coalesce(p_bank, ''),
           extensions.crypt(p_pw, extensions.gen_salt('bf')));
   if p_role = 'sales' then insert into hrms_targets(emp, calls, talk, conv, rev) values (nid, 900, 2400, 20, 350000); end if;
   perform hrms_note(nid, 'Welcome to Chefpy HRMS. Check in from My day when you start work.', 'me');
@@ -538,8 +541,9 @@ begin
   return e;
 end $$;
 
+drop function if exists public.hrms_update_employee(uuid,text,text,text,text,text,numeric,text,text,text,text);
 create or replace function public.hrms_update_employee(p_token uuid, p_emp text, p_name text, p_role text, p_dept text, p_title text, p_salary numeric,
-  p_mgr text, p_phone text, p_bank text, p_pw text) returns void
+  p_mgr text, p_phone text, p_bank text, p_pw text, p_label text) returns void
 language plpgsql security definer set search_path = public, extensions as $$
 declare e public.hrms_employees := hrms_admin(p_token);
 begin
@@ -551,7 +555,7 @@ begin
   if nullif(p_mgr, '') = p_emp then raise exception 'A person cannot report to themselves'; end if;
   if nullif(p_mgr, '') is not null and not exists (select 1 from hrms_employees where id = p_mgr and active) then raise exception 'Reports-to person not found'; end if;
   if coalesce(p_pw, '') <> '' and length(p_pw) < 6 then raise exception 'Password must be at least 6 characters'; end if;
-  update hrms_employees set name = trim(p_name), role = p_role, dept = trim(coalesce(p_dept, '')), title = trim(coalesce(p_title, '')),
+  update hrms_employees set name = trim(p_name), role = p_role, role_label = left(trim(coalesce(p_label, '')), 40), dept = trim(coalesce(p_dept, '')), title = trim(coalesce(p_title, '')),
          salary = coalesce(p_salary, 0), mgr = nullif(p_mgr, ''), phone = trim(coalesce(p_phone, '')), bank = trim(coalesce(p_bank, ''))
    where id = p_emp;
   if p_role = 'sales' then insert into hrms_targets(emp) values (p_emp) on conflict do nothing; end if;
@@ -688,8 +692,8 @@ do $$ declare f text; begin
     'hrms_save_task(uuid,bigint,text,text,text,date,text)','hrms_task_status(uuid,bigint,text)','hrms_delete_task(uuid,bigint)',
     'hrms_set_target(uuid,text,int,int,int,numeric)','hrms_add_adj(uuid,text,text,numeric,text)','hrms_set_inc(uuid,numeric)',
     'hrms_pay(uuid,json)','hrms_read(uuid,bigint)',
-    'hrms_add_employee(uuid,text,text,text,text,numeric,text,text,text,text)','hrms_remove_employee(uuid,text)',
-    'hrms_update_employee(uuid,text,text,text,text,text,numeric,text,text,text,text)','hrms_update_leave(uuid,bigint,text,date,date,text,text)',
+    'hrms_add_employee(uuid,text,text,text,text,numeric,text,text,text,text,text)','hrms_remove_employee(uuid,text)',
+    'hrms_update_employee(uuid,text,text,text,text,text,numeric,text,text,text,text,text)','hrms_update_leave(uuid,bigint,text,date,date,text,text)',
     'hrms_delete_leave(uuid,bigint)','hrms_calls_on(uuid,date)','hrms_update_call(uuid,bigint,text,text,text,int,numeric,text)','hrms_delete_call(uuid,bigint)',
     'hrms_set_day(uuid,text,date,text,text,int,int)','hrms_delete_day(uuid,text,date)','hrms_delete_adj(uuid,bigint)','hrms_delete_payout(uuid,text)'] loop
     execute format('revoke all on function public.%s from public', f);
